@@ -15,8 +15,8 @@ export default defineNuxtConfig({
         { name: 'color-scheme', content: 'light dark' }
       ],
       link: [
-        { 
-          rel: 'stylesheet', 
+        {
+          rel: 'stylesheet',
           href: 'https://fonts.googleapis.com/css2?family=Italiana&family=Prata&display=swap',
           crossorigin: 'anonymous'
         }
@@ -67,11 +67,12 @@ export default defineNuxtConfig({
   },
 
   build: {
-    transpile: ['three']
+    transpile: ['three', 'gsap']
   },
 
   plugins: [
-    '~/plugins/three.client.ts'
+    '~/plugins/three.client.ts',
+    { src: '~/plugins/gsap.client.ts', mode: 'client' }
   ],
 
   content: {
