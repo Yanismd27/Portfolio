@@ -240,6 +240,9 @@ gsap.registerPlugin(ScrollToPlugin)
 // Dark mode avec gestion améliorée
 const colorMode = useColorMode();
 const isDark = computed(() => colorMode.value === 'dark');
+const toggleDark = () => {
+  colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark';
+};
 
 // Refs et états de base
 const container = ref(null);
@@ -1536,11 +1539,5 @@ watch(isModalOpen, (newValue) => {
   transition-timing-function: cubic-bezier(0.19, 1, 0.22, 1);
 }
 
-.hoverable {
-  cursor: default !important;
-}
 
-.hoverable.hovered {
-  cursor: pointer !important;
-}
 </style>
