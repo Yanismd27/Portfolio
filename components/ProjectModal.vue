@@ -7,6 +7,52 @@
       @click="close"
     />
 
+    <!-- Lightbox -->
+    <div v-if="showLightbox" class="fixed inset-0 z-[80] bg-black/95 flex items-center justify-center">
+      <!-- Close button -->
+      <button 
+        @click="closeLightbox"
+        class="absolute top-4 right-4 text-white/80 hover:text-white p-2"
+      >
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+
+      <!-- Previous button -->
+      <button 
+        @click="previousImage"
+        class="absolute left-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white p-2"
+      >
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+      </button>
+
+      <!-- Next button -->
+      <button 
+        @click="nextImage"
+        class="absolute right-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white p-2"
+      >
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+      </button>
+
+      <!-- Image -->
+      <div class="max-w-[90vw] max-h-[90vh]">
+        <img 
+          :src="currentImage.url" 
+          :alt="currentImage.alt"
+          class="max-w-full max-h-[85vh] object-contain"
+        />
+        <div class="mt-4 text-center">
+          <p class="text-white text-lg font-prata">{{ currentImage.description }}</p>
+          <span class="text-white/60 text-sm font-prata">{{ currentImage.category }}</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Modal -->
     <div
       v-if="isOpen && project"
@@ -53,8 +99,7 @@
                 {{ project.description }}
               </p>
               <div class="flex justify-center gap-6">
-                
-                 <a v-if="project.demoUrl"
+                <a v-if="project.demoUrl"
                   :href="project.demoUrl"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -71,6 +116,37 @@
                 >
                   Code source
                 </a>
+              </div>
+            </div>
+
+            <!-- Project Gallery -->
+            <div class="mb-16">
+              <h3 class="text-2xl font-semibold text-gray-900 dark:text-white font-prata mb-8">
+                Galerie du projet
+              </h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div 
+                  v-for="(image, index) in project.gallery" 
+                  :key="image.url"
+                  class="gallery-item cursor-pointer"
+                  @click="openLightbox(index)"
+                >
+                  <div class="aspect-w-16 aspect-h-12">
+                    <img 
+                      :src="image.url" 
+                      :alt="image.alt"
+                      class="w-full h-full object-cover hover:opacity-90 transition-opacity"
+                    />
+                  </div>
+                  <div class="py-4">
+                    <p class="text-gray-600 dark:text-gray-300 text-sm font-prata mb-2">
+                      {{ image.description }}
+                    </p>
+                    <span class="text-xs text-gray-500 dark:text-gray-400 font-prata">
+                      {{ image.category }}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -130,8 +206,8 @@
                     </p>
                     <img
                       v-if="section.image"
-                      :src="section.image"
-                      :alt="section.imageAlt"
+                      :src="section.image?.url || section.image"
+                      :alt="section.image?.alt || section.imageAlt"
                       class="w-full rounded-lg"
                     />
                   </div>
@@ -146,6 +222,8 @@
 </template>
 
 <script setup>
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+
 const props = defineProps({
   isOpen: Boolean,
   project: Object,
@@ -154,8 +232,62 @@ const props = defineProps({
 
 const emit = defineEmits(['close'])
 const isContentVisible = ref(false)
+const showLightbox = ref(false)
+const currentImageIndex = ref(0)
 
-// Compute final dimensions
+// Lightbox controls
+const currentImage = computed(() => {
+  if (!props.project?.gallery?.length) return null
+  return props.project.gallery[currentImageIndex.value]
+})
+
+const openLightbox = (index) => {
+  currentImageIndex.value = index
+  showLightbox.value = true
+}
+
+const closeLightbox = () => {
+  showLightbox.value = false
+}
+
+const nextImage = () => {
+  if (!props.project?.gallery?.length) return
+  currentImageIndex.value = (currentImageIndex.value + 1) % props.project.gallery.length
+}
+
+const previousImage = () => {
+  if (!props.project?.gallery?.length) return
+  currentImageIndex.value = currentImageIndex.value === 0 
+    ? props.project.gallery.length - 1 
+    : currentImageIndex.value - 1
+}
+
+// Keyboard navigation for lightbox
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyDown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown)
+})
+
+const handleKeyDown = (e) => {
+  if (!showLightbox.value) return
+
+  switch (e.key) {
+    case 'ArrowRight':
+      nextImage()
+      break
+    case 'ArrowLeft':
+      previousImage()
+      break
+    case 'Escape':
+      closeLightbox()
+      break
+  }
+}
+
+// Modal controls
 const finalRect = computed(() => ({
   width: Math.min(1600, window.innerWidth * 0.95),
   height: window.innerHeight * 0.9,
@@ -180,6 +312,7 @@ watch(() => props.isOpen, (newValue) => {
     }, 300)
   } else {
     isContentVisible.value = false
+    showLightbox.value = false
   }
 }, { immediate: true })
 </script>
@@ -191,5 +324,13 @@ watch(() => props.isOpen, (newValue) => {
 
 .font-prata {
   font-family: 'Prata', serif;
+}
+
+.gallery-item {
+  transition: transform 0.3s ease;
+}
+
+.gallery-item:hover {
+  transform: translateY(-4px);
 }
 </style>

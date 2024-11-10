@@ -19,7 +19,7 @@
         @mousemove="handleMouseMove"
         @mouseleave="handleMouseLeave"
       >
-        <!-- Dark Mode Toggle with corrected structure -->
+        <!-- Dark Mode Toggle -->
         <div class="absolute top-8 right-8 z-[1000]">
           <button 
             @click="toggleDark"
@@ -58,6 +58,7 @@
             </span>
           </button>
         </div>
+
         <div class="editorial-content">
           <div class="max-w-2xl">
             <h1 
@@ -94,11 +95,10 @@
               Je crée des expériences web uniques et mémorables, en combinant design et technologie.
             </p>
 
-            <!-- Liens avec z-index et événements corrigés -->
             <div class="flex space-x-8 mb-16 relative" style="z-index: 1000;">
-              <NuxtLink
-                to="/projets"
+              <button
                 class="editorial-button group inline-flex items-center cursor-pointer relative"
+                @click="scrollToProjects"
                 @mouseenter="handleLinkHover"
                 @mouseleave="handleLinkLeave"
                 :class="{ 'hover:transform hover:translate-y-[-2px]': !isLinkHovered }"
@@ -119,6 +119,22 @@
                 >
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
                 </svg>
+              </button>
+
+              <NuxtLink
+                to="/about"
+                class="editorial-button group inline-flex items-center cursor-pointer relative"
+                @mouseenter="handleLinkHover"
+                @mouseleave="handleLinkLeave"
+                :class="{ 'hover:transform hover:translate-y-[-2px]': !isLinkHovered }"
+              >
+                <span class="relative">
+                  À propos
+                  <span 
+                    class="absolute left-0 bottom-0 w-full h-px bg-black dark:bg-white transform origin-left transition-transform duration-500"
+                    :class="{ 'scale-x-100': isLinkHovered === 'about', 'scale-x-0': isLinkHovered !== 'about' }"
+                  ></span>
+                </span>
               </NuxtLink>
               
               <NuxtLink
@@ -135,15 +151,6 @@
                     :class="{ 'scale-x-100': isLinkHovered === 'blog', 'scale-x-0': isLinkHovered !== 'blog' }"
                   ></span>
                 </span>
-                <svg 
-                  class="w-4 h-4 ml-2 transition-transform duration-500"
-                  :class="{ 'translate-x-2': isLinkHovered === 'blog' }"
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
-                </svg>
               </NuxtLink>
               
               <a 
@@ -173,8 +180,7 @@
           </div>
         </div>
       </div>
-
-      <!-- Three.js container avec correction des événements -->
+      <!-- Three.js container avec HoverOverlay -->
       <div 
         ref="container" 
         class="three-container"
@@ -184,7 +190,20 @@
         }"
         @mousemove="handleThreeContainerMouseMove"
         style="pointer-events: auto;"
-      ></div>
+      >
+        <!-- Project Hover Overlay -->
+        <div 
+  ref="projectOverlay"
+  class="project-hover-overlay"
+  :class="{ 'visible': projectHovered }"
+  :style="{
+    transform: `translate3d(${overlayPosition.x}px, ${overlayPosition.y}px, 0)`,
+  }"
+>
+  <h3 class="project-hover-title">{{ hoveredProjectTitle }}</h3>
+  <p class="project-hover-description">{{ hoveredProjectDescription }}</p>
+</div>
+      </div>
 
       <!-- Project Modal avec transitions améliorées -->
       <transition
@@ -207,51 +226,20 @@
     </section>
   </main>
 </template>
+
 <script setup>
 // Imports
 import { onMounted, ref, onBeforeUnmount, nextTick, watch, computed } from 'vue';
 import gsap from 'gsap';
 import ProjectModal from '~/components/ProjectModal.vue';
+import { projects as projectsData } from '~/utils/data/projects';
+import ScrollToPlugin from 'gsap/ScrollToPlugin'
+
+gsap.registerPlugin(ScrollToPlugin)
 
 // Dark mode avec gestion améliorée
 const colorMode = useColorMode();
 const isDark = computed(() => colorMode.value === 'dark');
-const toggleDark = () => {
-  const newMode = isDark.value ? 'light' : 'dark';
-  colorMode.preference = newMode;
-  
-  // Animation améliorée du toggle
-  gsap.to(".dark-mode-icon", {
-    duration: 0.6,
-    scale: 1.2,
-    rotate: newMode === 'dark' ? 360 : 0,
-    ease: 'elastic.out(1, 0.5)',
-    onComplete: () => {
-      gsap.to(".dark-mode-icon", {
-        duration: 0.3,
-        scale: 1,
-        ease: 'power2.out'
-      });
-    }
-  });
-
-  // Mise à jour des couleurs Three.js si la scène existe
-  if (scene) {
-    const targetColor = newMode === 'dark' ? 0x111111 : 0xffffff;
-    gsap.to(scene.background, {
-      r: newMode === 'dark' ? 0.067 : 1,
-      g: newMode === 'dark' ? 0.067 : 1,
-      b: newMode === 'dark' ? 0.067 : 1,
-      duration: 0.6,
-      ease: "power2.inOut",
-      onUpdate: () => {
-        if (scene.fog) {
-          scene.fog.color.copy(scene.background);
-        }
-      }
-    });
-  }
-};
 
 // Refs et états de base
 const container = ref(null);
@@ -266,7 +254,14 @@ const selectedMesh = ref(null);
 const initialRect = ref(null);
 const isLocked = ref(false);
 
-// États pour les micro-interactions améliorées
+// Nouvelles refs pour l'overlay
+const projectOverlay = ref(null);
+const overlayPosition = ref({ x: 0, y: 0 });
+const projectHovered = ref(false);
+const hoveredProjectTitle = ref('');
+const hoveredProjectDescription = ref('');
+
+// États pour les micro-interactions
 const isHovering = ref(false);
 const isButtonHovered = ref(false);
 const isLinkHovered = ref(null);
@@ -291,7 +286,6 @@ let hoveredMesh = null;
 let mouse = null;
 let raycaster = null;
 let ambientLight, directionalLight;
-let noiseTexture;
 
 // Content arrays
 const texts = [
@@ -301,61 +295,23 @@ const texts = [
   'Problem Solver'
 ];
 
-const projectImages = [
-  '/project1.jpg',
-  '/project2.jpg',
-  '/project3.jpg',
-  '/project4.jpg',
-  '/project5.jpg',
-  '/project6.jpg',
-  '/project7.jpg',
-  '/project8.jpg',
-  '/project9.jpg',
-  '/project10.jpg',
-].concat(['/project1.jpg', '/project2.jpg', '/project3.jpg']);
+// Préparation des données des projets pour Three.js
+const projects = projectsData;
+const projectImages = projects.map(project => project.image);
+const displayProjects = [...projects, ...projects.slice(0, 3)]; // Ajoute quelques projets en plus pour le défilement continu
 
-// Projects data avec validation
-const projects = projectImages.slice(0, 10).map((image, index) => ({
-  id: index + 1,
-  image: image,
-  title: `Projet ${index + 1}`,
-  description: `Description détaillée du projet ${index + 1}. Lorem ipsum dolor sit amet, consectetur adipiscing elit.`,
-  demoUrl: `https://demo${index + 1}.com`,
-  githubUrl: `https://github.com/user/project${index + 1}`,
-  technologies: ["Vue.js", "Three.js", "TailwindCSS"],
-  year: "2024",
-  role: "Full Stack Developer",
-  content: [
-    {
-      title: "Le Concept",
-      text: "Description du concept...",
-    },
-    {
-      title: "Défis Techniques",
-      text: "Description des défis...",
-      image: "/challenges.jpg",
-      imageAlt: "Technical challenges visualization"
-    },
-    {
-      title: "Solution",
-      text: "Description de la solution...",
-    }
-  ]
-}));
-// Three.js setup et fonctions améliorées
+// Three.js setup et fonctions
 const createScene = async () => {
   if (!THREE) return;
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(isDark.value ? 0x111111 : 0xffffff);
-
-  // Fog amélioré avec une transition plus douce
+  
   scene.fog = new THREE.FogExp2(
     isDark.value ? 0x111111 : 0xffffff,
     0.015
   );
 
-  // Configuration des lumières avec intensité ajustée
   ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
   scene.add(ambientLight);
 
@@ -363,12 +319,10 @@ const createScene = async () => {
   directionalLight.position.set(5, 5, 5);
   scene.add(directionalLight);
 
-  // Raycaster configuré pour une meilleure détection
   mouse = new THREE.Vector2(0, 0);
   raycaster = new THREE.Raycaster();
   raycaster.params.Mesh.threshold = 0.1;
 
-  // Configuration de la caméra améliorée
   camera = new THREE.PerspectiveCamera(
     65,
     window.innerWidth / window.innerHeight,
@@ -379,7 +333,6 @@ const createScene = async () => {
   camera.position.set(8, -12, window.innerWidth < 768 ? 45 : 40);
   camera.lookAt(0, -15, 0);
 
-  // Renderer avec antialiasing et performances optimisées
   renderer = new THREE.WebGLRenderer({ 
     antialias: true,
     powerPreference: "high-performance",
@@ -399,7 +352,6 @@ const createScene = async () => {
     renderer.domElement.style.pointerEvents = 'auto';
   }
 };
-
 const createImages = async () => {
   if (!THREE || !scene) return;
 
@@ -409,15 +361,14 @@ const createImages = async () => {
   const rotationStep = 0.8;
   const aspectRatio = 4/3;
 
-  // Créer une texture par défaut simple (un carré gris)
   const defaultTextureData = new Uint8Array([128, 128, 128, 255]);
   const defaultTexture = new THREE.DataTexture(defaultTextureData, 1, 1, THREE.RGBAFormat);
   defaultTexture.needsUpdate = true;
 
-  const loadTexture = (url, index) => {
+  const loadTexture = (project, index) => {
     return new Promise((resolve) => {
       textureLoader.load(
-        url,
+        project.image,
         (texture) => {
           texture.minFilter = THREE.LinearFilter;
           texture.magFilter = THREE.LinearFilter;
@@ -464,6 +415,7 @@ const createImages = async () => {
           };
           mesh.userData.originalRotation = mesh.rotation.clone();
           mesh.userData.projectIndex = index % projects.length;
+          mesh.userData.project = projects[index % projects.length];
           
           scene.add(mesh);
           images.push({
@@ -471,60 +423,15 @@ const createImages = async () => {
             initialY: yPos,
             initialAngle: angle,
             radius: radius,
-            material
+            material,
+            project: projects[index % projects.length]
           });
 
           resolve();
         },
         undefined,
         (error) => {
-          console.warn(`Error loading texture ${url}:`, error);
-          // Utiliser la texture par défaut en cas d'erreur
-          const material = new THREE.MeshPhongMaterial({
-            map: defaultTexture,
-            transparent: true,
-            opacity: 0.95,
-            color: 0x808080,
-            shininess: 50,
-            fog: true,
-            depthTest: true,
-            depthWrite: true,
-            side: THREE.DoubleSide
-          });
-          
-          // Créer le mesh avec la texture par défaut
-          const mesh = new THREE.Mesh(new THREE.PlaneGeometry(8, 8 * aspectRatio), material);
-          const angle = index * rotationStep;
-          const radius = spiralRadius - (index * 0.3);
-          const yPos = -(index * heightStep);
-          
-          mesh.position.set(
-            Math.sin(angle) * radius,
-            yPos,
-            Math.cos(angle) * radius
-          );
-          
-          const centerPoint = new THREE.Vector3(0, yPos, 0);
-          mesh.lookAt(centerPoint);
-          mesh.rotation.y += Math.PI;
-          
-          mesh.userData.originalPosition = {
-            x: mesh.position.x,
-            y: mesh.position.y,
-            z: mesh.position.z
-          };
-          mesh.userData.originalRotation = mesh.rotation.clone();
-          mesh.userData.projectIndex = index % projects.length;
-          
-          scene.add(mesh);
-          images.push({
-            mesh,
-            initialY: yPos,
-            initialAngle: angle,
-            radius: radius,
-            material
-          });
-          
+          console.warn(`Error loading texture for project ${project.title}:`, error);
           resolve();
         }
       );
@@ -532,69 +439,11 @@ const createImages = async () => {
   };
 
   try {
-    const loadPromises = projectImages.map((url, index) => loadTexture(url, index));
+    const loadPromises = displayProjects.map((project, index) => loadTexture(project, index));
     await Promise.all(loadPromises);
   } catch (error) {
     console.error('Error creating images:', error);
   }
-};
-
-// Fonction utilitaire pour créer le matériel
-const createMaterialFromTexture = (texture) => {
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  texture.generateMipmaps = false;
-
-  return new THREE.MeshPhongMaterial({
-    map: texture,
-    transparent: true,
-    opacity: 0.95,
-    shininess: 50,
-    fog: true,
-    depthTest: true,
-    depthWrite: true
-  });
-};
-
-// Fonction utilitaire pour créer le mesh
-const createMeshWithMaterial = (material, index) => {
-  const baseWidth = 8;
-  const width = baseWidth - (Math.random() * 0.5);
-  const height = width * (4/3);
-  
-  const geometry = new THREE.PlaneGeometry(width, height);
-  const mesh = new THREE.Mesh(geometry, material);
-  
-  const spiralRadius = 15;
-  const heightStep = 4;
-  const rotationStep = 0.8;
-  
-  const angle = index * rotationStep;
-  const radius = spiralRadius - (index * 0.3);
-  const yPos = -(index * heightStep);
-  
-  mesh.position.set(
-    Math.sin(angle) * radius,
-    yPos,
-    Math.cos(angle) * radius
-  );
-  
-  const centerPoint = new THREE.Vector3(0, yPos, 0);
-  mesh.lookAt(centerPoint);
-  mesh.rotation.y += Math.PI;
-  
-  mesh.userData.originalPosition = mesh.position.clone();
-  mesh.userData.originalRotation = mesh.rotation.clone();
-  mesh.userData.projectIndex = index;
-  
-  scene.add(mesh);
-  images.push({
-    mesh,
-    initialY: yPos,
-    initialAngle: angle,
-    radius: radius,
-    material
-  });
 };
 
 const updateSpiral = () => {
@@ -640,41 +489,115 @@ const animate = () => {
   renderer.render(scene, camera);
   animationFrameId = requestAnimationFrame(animate);
 };
-// Handlers d'événements améliorés
+
+// Gestion des événements améliorée pour l'overlay au survol
+const handleThreeContainerMouseMove = (event) => {
+  if (!THREE || !scene || !camera || !raycaster || !mouse || !renderer || isModalOpen.value) return;
+
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObjects(scene.children);
+
+  if (renderer.domElement) {
+    renderer.domElement.style.cursor = intersects.length > 0 ? 'pointer' : 'default';
+  }
+
+  if (intersects.length === 0) {
+    if (hoveredMesh) {
+      resetHoveredMesh();
+    }
+    projectHovered.value = false;
+    return;
+  }
+
+  const mesh = intersects[0].object;
+  if (!mesh.userData.project) return;
+
+  if (hoveredMesh === mesh) {
+    updateOverlayPosition(event);
+    return;
+  }
+
+  if (hoveredMesh) {
+    resetHoveredMesh();
+  }
+
+  const project = mesh.userData.project;
+  hoveredProjectTitle.value = project.title;
+  hoveredProjectDescription.value = project.description || '';
+  
+  animateMeshHover(mesh);
+  showProjectOverlay(event);
+
+  hoveredMesh = mesh;
+
+  // Mise à jour de la position de l'overlay même pendant le mouvement
+  if (projectHovered.value) {
+    updateOverlayPosition(event);
+  }
+};
+
+const showProjectOverlay = (event) => {
+  updateOverlayPosition(event);
+  projectHovered.value = true;
+};
+
+const updateOverlayPosition = (event) => {
+  const padding = 20; // Distance par rapport au curseur
+  overlayPosition.value = {
+    x: event.clientX + padding,
+    y: event.clientY - padding
+  };
+};
+
+const resetHoveredMesh = () => {
+  if (!hoveredMesh) return;
+
+  if (renderer?.domElement) {
+    renderer.domElement.style.cursor = 'default';
+  }
+  
+  projectHovered.value = false;
+
+  gsap.to(hoveredMesh.position, {
+    z: hoveredMesh.userData.originalPosition.z,
+    duration: 0.4,
+    ease: 'power2.out',
+    onComplete: () => {
+      hoveredMesh = null;
+    }
+  });
+};
+
+const animateMeshHover = (mesh) => {
+  if (renderer?.domElement) {
+    renderer.domElement.style.cursor = 'pointer'; // Ajout immédiat du curseur
+  }
+  
+  gsap.to(mesh.position, {
+    z: mesh.userData.originalPosition.z + 2,
+    duration: 0.4,
+    ease: 'back.out(1.7)'
+  });
+};
+
 const handleMouseMove = (event) => {
   if (isLocked.value || !editorialWrapper.value) return;
   
   const rect = editorialWrapper.value.getBoundingClientRect();
-  const { clientX, clientY } = event;
-  if (editorialWrapper.value) {
-    editorialWrapper.value.style.setProperty('--mouse-x', `${((clientX - rect.left) / rect.width) * 100}%`);
-    editorialWrapper.value.style.setProperty('--mouse-y', `${((clientY - rect.top) / rect.height) * 100}%`);
-  }
-
-  // Calcul des positions relatives et de la vélocité
-  const newX = ((clientX - rect.left) / rect.width) * 100;
-  const newY = ((clientY - rect.top) / rect.height) * 100;
-  
-  mouseVelocity.value = {
-    x: newX - lastCursorPosition.value.x,
-    y: newY - lastCursorPosition.value.y
-  };
-
-  cursorPosition.value = { x: newX, y: newY };
-  lastCursorPosition.value = { x: newX, y: newY };
-  
-  const mouseX = (clientX - rect.left) / rect.width - 0.5;
-  const mouseY = (clientY - rect.top) / rect.height - 0.5;
+  const mouseX = (event.clientX - rect.left) / rect.width - 0.5;
+  const mouseY = (event.clientY - rect.top) / rect.height - 0.5;
 
   isHovering.value = true;
 
-  // Mise à jour des variables CSS pour le gradient
   if (editorialWrapper.value) {
-    editorialWrapper.value.style.setProperty('--mouse-x', `${cursorPosition.value.x}%`);
-    editorialWrapper.value.style.setProperty('--mouse-y', `${cursorPosition.value.y}%`);
+    editorialWrapper.value.style.setProperty('--mouse-x', `${((event.clientX - rect.left) / rect.width) * 100}%`);
+    editorialWrapper.value.style.setProperty('--mouse-y', `${((event.clientY - rect.top) / rect.height) * 100}%`);
   }
 
-  // Effets de parallaxe améliorés
   gsap.to('.editorial-content', {
     duration: 0.8,
     rotateX: -mouseY * 5,
@@ -697,7 +620,6 @@ const handleMouseMove = (event) => {
     ease: 'power2.out'
   });
 
-  // Animation des boutons avec délai progressif
   gsap.to('.editorial-button', {
     duration: 0.8,
     x: mouseX * 15,
@@ -706,64 +628,9 @@ const handleMouseMove = (event) => {
     ease: 'power2.out'
   });
 };
-
-// Handler spécifique pour le conteneur Three.js
-const handleThreeContainerMouseMove = (event) => {
-  if (!THREE || !scene || !camera || !raycaster || !mouse || !renderer || isModalOpen.value) return;
-
-  const rect = renderer.domElement.getBoundingClientRect();
-  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-  raycaster.setFromCamera(mouse, camera);
-  const intersects = raycaster.intersectObjects(scene.children);
-
-  // Gestion du hoveredMesh
-  if (intersects.length === 0) {
-    if (hoveredMesh) {
-      gsap.to(hoveredMesh.position, {
-        z: hoveredMesh.userData.originalPosition.z,
-        duration: 0.4,
-        ease: 'power2.out',
-        onComplete: () => {
-          hoveredMesh = null;
-          renderer.domElement.style.cursor = 'default';
-        }
-      });
-    }
-    return;
-  }
-
-  if (intersects.length > 0) {
-    const mesh = intersects[0].object;
-    
-    if (hoveredMesh === mesh) return;
-
-    if (hoveredMesh) {
-      gsap.to(hoveredMesh.position, {
-        z: hoveredMesh.userData.originalPosition.z,
-        duration: 0.4,
-        ease: 'power2.out'
-      });
-    }
-
-    gsap.to(mesh.position, {
-      z: mesh.userData.originalPosition.z + 2,
-      duration: 0.4,
-      ease: 'back.out(1.7)',
-      onComplete: () => {
-        renderer.domElement.style.cursor = 'pointer';
-      }
-    });
-
-    hoveredMesh = mesh;
-  }
-};
-
 const handleMouseLeave = () => {
   isHovering.value = false;
 
-  // Reset des animations avec timing amélioré
   gsap.to(['.editorial-content', '.editorial-title', '.editorial-subtitle', '.editorial-button'], {
     duration: 0.8,
     rotateX: 0,
@@ -785,6 +652,7 @@ const handleMouseLeave = () => {
         if (renderer?.domElement) {
           renderer.domElement.style.cursor = 'default';
         }
+        projectHovered.value = false;
       }
     });
   }
@@ -851,7 +719,8 @@ const handleButtonLeave = () => {
 const handleLinkHover = (e) => {
   const type = e.currentTarget.textContent.trim().toLowerCase();
   isLinkHovered.value = type.includes('projets') ? 'projects' :
-                        type.includes('blog') ? 'blog' : 'contact';
+                        type.includes('blog') ? 'blog' : 
+                        type.includes('propos') ? 'about' : 'contact';
   
   gsap.to(e.currentTarget, {
     duration: 0.4,
@@ -870,7 +739,8 @@ const handleLinkLeave = (e) => {
     ease: 'power2.out'
   });
 };
-// Scroll handling amélioré
+
+// Ajoutez cette fonction avant handleScroll
 const updateEditorialStyles = () => {
   if (!editorialWrapper.value || !process.client) return;
   
@@ -909,7 +779,6 @@ const handleScroll = () => {
   scrollY.value = currentScroll;
   updateEditorialStyles();
   
-  // Animation améliorée de l'indicateur de scroll
   if (!isScrolling.value) {
     isScrolling.value = true;
     gsap.to('.scroll-line', {
@@ -933,7 +802,24 @@ const handleScroll = () => {
   updateSpiral();
 };
 
-// Gestion des modales améliorée
+const handleResize = () => {
+  if (!camera || !renderer || !process.client) return;
+
+  windowHeight.value = window.innerHeight;
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  const newZ = window.innerWidth < 768 ? 45 : 40;
+  gsap.to(camera.position, {
+    z: newZ,
+    duration: 0.6,
+    ease: "power2.inOut"
+  });
+  
+  updateEditorialStyles();
+};
+
 const handleImageClick = (event) => {
   if (!THREE || !scene || !camera || !raycaster || !mouse || !renderer) return;
 
@@ -946,9 +832,9 @@ const handleImageClick = (event) => {
 
   if (intersects.length > 0) {
     const clickedMesh = intersects[0].object;
-    const projectIndex = clickedMesh.userData.projectIndex;
+    const project = clickedMesh.userData.project;
     
-    if (projectIndex !== undefined && projectIndex < projects.length) {
+    if (project) {
       selectedMesh.value = clickedMesh;
       
       const vector = new THREE.Vector3();
@@ -971,11 +857,10 @@ const handleImageClick = (event) => {
         top: y - (size * (3/4)/2)
       };
 
-      selectedProject.value = projects[projectIndex];
+      selectedProject.value = project;
       isModalOpen.value = true;
       toggleLocked(true);
 
-      // Animation améliorée du fade out
       images.forEach(({ mesh, material }) => {
         if (mesh !== clickedMesh) {
           gsap.to(material, {
@@ -991,7 +876,6 @@ const handleImageClick = (event) => {
 
 const handleModalClose = () => {
   if (selectedMesh.value) {
-    // Animation de retour de la caméra
     gsap.to(camera.position, {
       x: 8,
       y: -12,
@@ -999,7 +883,6 @@ const handleModalClose = () => {
       ease: "power2.inOut"
     });
 
-    // Fade in progressif des autres meshes
     images.forEach(({ mesh, material }, index) => {
       if (mesh !== selectedMesh.value) {
         gsap.to(material, {
@@ -1019,26 +902,6 @@ const handleModalClose = () => {
   }
 };
 
-const handleResize = () => {
-  if (!camera || !renderer || !process.client) return;
-
-  windowHeight.value = window.innerHeight;
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-
-  // Ajustement adaptatif de la caméra
-  const newZ = window.innerWidth < 768 ? 45 : 40;
-  gsap.to(camera.position, {
-    z: newZ,
-    duration: 0.6,
-    ease: "power2.inOut"
-  });
-  
-  updateEditorialStyles();
-};
-
-// Gestion du scroll lock
 const toggleLocked = (value) => {
   isLocked.value = value;
   if (process.client) {
@@ -1052,7 +915,18 @@ const toggleLocked = (value) => {
     }
   }
 };
-// Initialize
+
+const scrollToProjects = () => {
+  const targetScroll = window.innerHeight;
+  
+  gsap.to(window, {
+    duration: 1.5,
+    scrollTo: targetScroll,
+    ease: "power2.inOut"
+  });
+};
+
+// Lifecycle hooks
 onMounted(async () => {
   if (process.client) {
     const { $THREE } = useNuxtApp();
@@ -1064,13 +938,11 @@ onMounted(async () => {
     
     if (THREE) {
       try {
-        // Initialisation séquentielle pour de meilleures performances
         await createScene();
         await nextTick();
         await createImages();
         
         nextTick(() => {
-          // Animation initiale
           gsap.from(camera.position, {
             z: 100,
             duration: 1.5,
@@ -1080,7 +952,6 @@ onMounted(async () => {
             }
           });
 
-          // Event listeners avec options de performance
           window.addEventListener('click', handleImageClick, { passive: true });
           window.addEventListener('mousemove', handleMouseMove, { passive: true });
           window.addEventListener('resize', handleResize, { passive: true });
@@ -1090,14 +961,12 @@ onMounted(async () => {
             container.value.addEventListener('mouseleave', handleMouseLeave);
           }
 
-          // Initialisation des variables CSS pour le gradient
           if (editorialWrapper.value) {
             editorialWrapper.value.style.setProperty('--mouse-x', '50%');
             editorialWrapper.value.style.setProperty('--mouse-y', '50%');
           }
         });
 
-        // Animation améliorée de la rotation des textes
         textInterval.value = setInterval(() => {
           const currentText = document.querySelector('.subtitle-text');
           if (currentText) {
@@ -1135,10 +1004,8 @@ onMounted(async () => {
   }
 });
 
-// Cleanup amélioré
 onBeforeUnmount(() => {
   if (process.client) {
-    // Nettoyage des event listeners
     window.removeEventListener('resize', handleResize);
     window.removeEventListener('scroll', handleScroll);
     window.removeEventListener('click', handleImageClick);
@@ -1148,7 +1015,6 @@ onBeforeUnmount(() => {
       container.value.removeEventListener('mouseleave', handleMouseLeave);
     }
     
-    // Annulation des animations en cours
     if (animationFrameId) {
       cancelAnimationFrame(animationFrameId);
     }
@@ -1157,7 +1023,6 @@ onBeforeUnmount(() => {
       clearInterval(textInterval.value);
     }
     
-    // Nettoyage Three.js
     if (scene) {
       scene.traverse((object) => {
         if (object instanceof THREE.Mesh) {
@@ -1177,19 +1042,17 @@ onBeforeUnmount(() => {
       renderer = null;
     }
     
-    // Réinitialisation des états
     images = [];
     hoveredMesh = null;
     selectedMesh.value = null;
     
-    // Déblocage du scroll si nécessaire
     if (isLocked.value) {
       toggleLocked(false);
     }
   }
 });
 
-// Watchers améliorés
+// Watchers
 watch(isDark, (newValue) => {
   if (scene) {
     const targetColor = newValue ? 0x111111 : 0xffffff;
@@ -1207,7 +1070,6 @@ watch(isDark, (newValue) => {
       }
     });
 
-    // Animation des matériaux pour le dark mode
     images.forEach(({ material }) => {
       gsap.to(material, {
         duration: 0.6,
@@ -1218,7 +1080,6 @@ watch(isDark, (newValue) => {
   }
 });
 
-// Watch pour les animations de texte
 watch(currentIndex, (newIndex, oldIndex) => {
   textTransitioning.value = true;
   gsap.to('.subtitle-text', {
@@ -1242,7 +1103,6 @@ watch(currentIndex, (newIndex, oldIndex) => {
   });
 });
 
-// Watch pour la gestion du modal
 watch(isModalOpen, (newValue) => {
   if (newValue) {
     gsap.to(camera.position, {
@@ -1261,6 +1121,67 @@ watch(isModalOpen, (newValue) => {
 </script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Italiana&family=Prata&display=swap');
+.project-hover-overlay {
+  position: fixed;
+  pointer-events: none;
+  z-index: 1000;
+  transform-origin: top left;
+  visibility: hidden; /* Ajouté */
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  padding: 12px 16px;
+  border-radius: 8px;
+  min-width: 200px;
+  max-width: 300px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  transition: opacity 0.3s ease, visibility 0.3s ease; /* Modifié */
+}
+
+.project-hover-overlay.visible {
+  visibility: visible;
+  opacity: 1;
+}
+
+.project-hover-content {
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 12px 16px;
+  min-width: 200px;
+  max-width: 300px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.dark .project-hover-content {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+.project-hover-title {
+  font-family: 'Prata', serif;
+  font-size: 16px;
+  font-weight: 500;
+  color: white;
+  margin-bottom: 4px;
+}
+
+.project-hover-description {
+  font-family: 'Prata', serif;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.4;
+}
+
+.dark .project-hover-title {
+  color: black;
+}
+
+.dark .project-hover-description {
+  color: rgba(0, 0, 0, 0.8);
+}
+
 
 /* Base Layout */
 .editorial-wrapper {
@@ -1325,7 +1246,6 @@ watch(isModalOpen, (newValue) => {
   position: relative;
   z-index: 100;
   transform: none !important;
-
 }
 
 /* Three.js Container */
@@ -1526,23 +1446,6 @@ watch(isModalOpen, (newValue) => {
   }
 }
 
-/* Transitions */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-/* Dark Mode Transition */
-.dark-mode-icon {
-  transition: transform 0.6s cubic-bezier(0.19, 1, 0.22, 1);
-  will-change: transform;
-}
-
 /* Media Queries */
 @media (max-width: 768px) {
   .editorial-content {
@@ -1579,6 +1482,10 @@ watch(isModalOpen, (newValue) => {
       rgba(255, 255, 255, 0.1),
       transparent 40%
     );
+  }
+
+  .project-hover-overlay {
+    display: none;
   }
 }
 
@@ -1629,86 +1536,11 @@ watch(isModalOpen, (newValue) => {
   transition-timing-function: cubic-bezier(0.19, 1, 0.22, 1);
 }
 
-/* Hover Effects */
-.hover-lift {
-  transition: transform 0.6s cubic-bezier(0.19, 1, 0.22, 1);
+.hoverable {
+  cursor: default !important;
 }
 
-.hover-lift:hover {
-  transform: translateY(-2px) scale(1.01);
-}
-
-/* Enhanced Focus States */
-.editorial-button:focus {
-  outline: none;
-  box-shadow: 0 0 0 2px currentColor;
-  border-radius: 4px;
-}
-
-/* Touch Device Optimizations */
-@media (hover: none) {
-  .editorial-wrapper::before {
-    display: none;
-  }
-  
-  .editorial-content {
-    transform: none !important;
-  }
-  
-  .editorial-button:before {
-    display: none;
-  }
-}
-
-/* Performance Optimizations */
-* {
-  -webkit-tap-highlight-color: transparent;
-}
-
-.transform-gpu {
-  transform: translate3d(0, 0, 0);
-}
-
-/* Scrollbar Styles */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 dark:bg-gray-700;
-  border-radius: 4px;
-  transition: background-color 0.3s ease;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400 dark:bg-gray-600;
-}
-
-/* Modal Styles */
-.modal-overlay {
-  transition: opacity 0.3s ease;
-}
-
-.modal-content {
-  transition: transform 0.6s cubic-bezier(0.19, 1, 0.22, 1),
-              opacity 0.6s cubic-bezier(0.19, 1, 0.22, 1);
-}
-
-/* Text Highlight Effect */
-.text-highlight {
-  @apply text-gray-900 dark:text-white;
-  transform: scale(1.05);
-  transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1);
-}
-
-/* Content Blur Effect */
-.blur-sm {
-  filter: blur(4px);
-  transition: filter 0.3s ease-in-out;
+.hoverable.hovered {
+  cursor: pointer !important;
 }
 </style>
